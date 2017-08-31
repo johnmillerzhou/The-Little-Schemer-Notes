@@ -9,7 +9,7 @@
 # 前言
 
 这里定义了一个过程`atom?`：
-```
+```Scheme
 (define atom?
   (lambda (x)
     (and (not (pair? x)) (not (null? x)))))
