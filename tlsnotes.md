@@ -1,9 +1,9 @@
-> 链接目录
-> https://www.oschina.net/translate/learn-clojure-in-minutes
-> https://www.ibm.com/developerworks/cn/opensource/os-eclipse-clojure/
-> http://okmij.org/ftp/Computation/lambda-calc.html
+> 链接目录</br>
+> https://www.oschina.net/translate/learn-clojure-in-minutes</br>
+> https://www.ibm.com/developerworks/cn/opensource/os-eclipse-clojure/</br>
+> http://okmij.org/ftp/Computation/lambda-calc.html</br>
 
-> 在读SICP的同时读The Little Schemer
+> 在读SICP的同时读The Little Schemer</br>
 > 有可能读完The Little Schemer之后就懒得读SICP了呢
 
 # 前言
@@ -55,7 +55,7 @@ http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
   (lambda (x list)
     (cond ((null? list) #f) ;找遍列表也没找到
           ((eq? x (car list)) #t)
-          (else (member? x (cdr list))))))
+          (else (member? x (cdr list)))))))
 ```
 
 > 任何函数必须首先检查传入参数是否为null/0。
@@ -71,13 +71,13 @@ http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
   (lambda (a lat)
     (cond ((null? lat) lat)
           ((eq? a (car lat)) (cdr lat))
-          (else (cons (car lat) (rember a (cdr lat)))))))
+          (else (cons (car lat) (rember a (cdr lat))))))))
 
 (define delete
   (lambda (a lat)
     (cond ((null? lat) lat)
           ((member? a lat) (delete a (rember a lat)))
-          (else lat))))
+          (else lat)))))
 ```
 顺便写了个`delete`，可以迭代地删除表中所有匹配原子。
 
@@ -469,10 +469,7 @@ Racket好像没有`list-set`，写一个：
 (define Y
   (lambda (f)
     ( (lambda (x) (f (lambda (y) ((x x) y))))
-      (lambda (x) (f (lambda (y) ((x x) y))))
-    )
-  )
-)
+      (lambda (x) (f (lambda (y) ((x x) y)))))))
 
 ((Y FACT) 100)
 ```
@@ -510,3 +507,74 @@ Racket好像没有`list-set`，写一个：
 (insertR* 0 1 '(((1 2) 3 1) 1 ((((1) 2 3) (1))) 1 1 (1)))
 ```
 可以看出，以前对lat进行处理的时候，每次递归都需要判断传入的`list`是否为空表。这实际上是对表BT的右支进行检测，如果右支存在，则继续递归。而现在涉及表BT的左支，递归执行树的形状就真的是一棵左右都有分杈的树，因此每一步都需要判断当前表的左支是否是一棵树，如果是树，则递归，如果不是树（即原子），则进行出口处理。
+
+类似地写出对真·表进行某元素计数的`occur*`函数：
+```Scheme
+(define occur*
+  (lambda (a list)
+    (cond ((null? list) 0)
+          ((atom? (car list))
+           (cond ((eq? a (car list)) (add1 (occur* a (cdr list))))
+                 (else (occur* a (cdr list)))))
+          (else (add (occur* a (car list)) (occur* a (cdr list)))))))
+```
+
+按照同样的套路，也可以重写`insertL*`和`subst*`，但这里不写了。
+
+下面是一个重要的函数：`member*`。
+```Scheme
+(define member*
+  (lambda (a list)
+    (cond ((null? list) #f)
+          ((atom? (car list))
+           (cond ((eq? a (car list)) #t)
+                 (else (member* a (cdr list)))))
+          (else (or (member* a (car list)) (member* a (cdr list)))))))
+```
+下面这个函数只对左支进行递归：
+```Scheme
+(define leftmost
+  (lambda (list)
+    (cond ((null? list) '())
+          ((atom? (car list)) (car list))
+          (else (leftmost (car list))))))
+```
+谓词`and`和`or`采用短路策略进行求值，这种特性意味着它可以采用同样具有这种特性的`cond`来实现：
+```Scheme
+;(and a b)
+(cond (a b)
+      (else #f))
+;(or a b)
+(cond (a #t)
+      (else b))
+```
+这说明，`cond`是比`and`和`or`更“基本”的特殊形式。
+
+下面实现谓词函数`eqlist?`，该函数判断两个list是不是“完全”相同。所谓的完全相同，指的是结构和内容都完全相同。
+
+本文前言中有说过，list实际上就是个pair，其car是左元素，cdr是右元素。左右元素都可以分别是三种S-表达式：null、atom、以及list。所以排列组合一下，一个list的结构无非有7种：
+
+ 1. (null , null)
+ 2. (atom , null)
+ 3. (atom , atom)
+ 4. (atom , list)
+ 5. (list , null)
+ 6. (list , atom)
+ 7. (list , list)
+
+
+所以，只需要递归地判断`list1`和`list2`的左支和右支是否分别对应相同，就可以判断出两个list是否相同。
+
+深入思考一下。首先考虑递归出口：若两表均为null，则返回#t；若有且只有一个表是null，那肯定是#f。然后考虑左支：若两表左支均为相同atom，则递归判断右支，此种情况下，结果取决于右支是否相同；如果有且只有一个表的左支是atom，则一定是#f。其余情况下，将递归判断左支和右支，只有左右支均对应相同，两表才相同。
+
+```Scheme
+(define eqlist?
+  (lambda (list1 list2)
+    (cond ((and (null? list1) (null? list2)) #t)
+          ((or  (null? list1) (null? list2)) #f)
+          ((and (atom? (car list1)) (atom? (car list2)))
+             (and (eq? (car list1) (car list2)) (eqlist? (cdr list1) (cdr list2))))
+          ((or  (atom? (car list1)) (atom? (car list2))) #f)
+          (else (and (eqlist? (car list1) (car list2))
+                     (eqlist? (cdr list1) (cdr list2)))))))
+```
