@@ -55,7 +55,7 @@ http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
   (lambda (x list)
     (cond ((null? list) #f) ;找遍列表也没找到
           ((eq? x (car list)) #t)
-          (else (member? x (cdr list)))))))
+          (else (member? x (cdr list))))))
 ```
 
 > 任何函数必须首先检查传入参数是否为null/0。
@@ -71,13 +71,13 @@ http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
   (lambda (a lat)
     (cond ((null? lat) lat)
           ((eq? a (car lat)) (cdr lat))
-          (else (cons (car lat) (rember a (cdr lat))))))))
+          (else (cons (car lat) (rember a (cdr lat)))))))
 
 (define delete
   (lambda (a lat)
     (cond ((null? lat) lat)
           ((member? a lat) (delete a (rember a lat)))
-          (else lat)))))
+          (else lat))))
 ```
 顺便写了个`delete`，可以迭代地删除表中所有匹配原子。
 
