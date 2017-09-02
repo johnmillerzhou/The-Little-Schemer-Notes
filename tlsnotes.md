@@ -34,16 +34,17 @@
 
 # 前言
 
-这里定义了一个过程`atom?`：
+原子是Scheme的基本元素之一。首先定义了过程`atom?`，用来判断一个S-表达式是不是原子：
 ```Scheme
 (define atom?
   (lambda (x)
     (and (not (pair? x)) (not (null? x)))))
 ```
-总之是用来判断传入参数是不是原子表达式。
 
 这个“pair”实际上就是list，见
-http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
+http://blog.csdn.net/xiao_wanpeng/article/details/8466745 。
+
+但是需要注意，pair和list是两码事。pair在表达上是诸如`'(1 . 2)`这样用点分隔开的二元组。
 
 # 第一章
 
@@ -59,9 +60,13 @@ http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
 
 **eq?** 判断两个S-表达式是否相同。
 
-**quote** 或者 **'** 用来抑制对S-表达式的求值。由于S-表达式是递归结构，因此被抑制求值的S-表达式的各个子表达式都不会被求值。
+list的默认解析方式是：以car为函数名，以cdr为参数列表对函数进行调用，整个list的evaluated的结果就是函数的返回值。某些“关键字”作为car时，求值规则会发生变化，这个要具体问题具体分析。这个问题可以参考SICP的练习1.6。（“关键字”很少，并不复杂）
+
+**quote** 或者 **'** 用来抑制对S-表达式的求值。由于S-表达式是递归结构，因此被抑制求值的S-表达式的各个子表达式都不会被求值。被quote的部分是作为“数据”的代码。quoted原子的结果是它本身，类似于C系语言的enum；quoted数字原子的结果仍然是数字；quoted list的结果就是不求值的列表，类似于链表这样的结构。
 
 # 第二章
+
+本章从`lat?`函数的实现出发，探讨递归处理lat的基本思想和方法。
 
 定义过程`lat?`，用来判断表的子表达式是否都是原子，即判断list是不是lat（list of atoms）。第五章之前，涉及到的列表基本上都是lat。
 
@@ -78,13 +83,13 @@ http://blog.csdn.net/xiao_wanpeng/article/details/8466745。
 定义过程`member?`，用来判断某个S-表达式是否为某个列表的成员。这个函数很重要，尤其是对于实现集合的第七章。
 ```Scheme
 (define member?
-  (lambda (x list)
-    (cond ((null? list) #f) ;找遍列表也没找到
-          ((eq? x (car list)) #t)
-          (else (member? x (cdr list))))))
+  (lambda (x lat)
+    (cond ((null? lat) #f) ;找遍列表也没找到
+          ((eq? x (car lat)) #t)
+          (else (member? x (cdr lat))))))
 ```
 
-> 任何函数必须首先检查传入参数是否为null/0。
+> 任何函数必须首先检查传入参数是否为null/0。这是递归得以收敛的出口条件。
 
 # 第三章
 
@@ -194,11 +199,7 @@ Racket好像没有`list-set`，写一个：
 
 # 日历
 
-日历是我的Hello World。五年前初学C语言的时候，写的第一个“有用”的程序就是日历。
-
-![C](http://img.blog.csdn.net/20170826203728452?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvbWlrdWtvbmFp/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast)
-
-如今，正在探索函数式编程，所以使用Scheme重新编写一遍这个简陋的日历。
+日历是我的Hello World。五年前初学C语言的时候，写的第一个“有用”的程序就是日历。读到这里所掌握的技巧，已经可以帮助我实现同样的功能，所以这里使用Scheme重新编写一遍这个简陋的日历。
 
 ```Scheme
 (define get-value-iter
@@ -288,15 +289,13 @@ Racket好像没有`list-set`，写一个：
 
 ![Scheme](http://img.blog.csdn.net/20170826203710606?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvbWlrdWtvbmFp/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast)
 
-由于星期计数是从2017年1月1日（星期日）开始的，所以不能显示2017年以前的日历。不过这不是很严重的问题，稍微修改一下程序就好。
+由于星期计数是从2017年1月1日（星期日）开始的，所以不能显示2017年以前的日历。不过这不是本质上的错误，稍微改改代码就好了。
 
 # 第四章
 
 本章讲述了基本数值运算和谓词的实现。
 
-首先，暂时只考虑自然数，即非负整数。
-
-首先定义两个魔法函数：“+1”函数和“-1”函数。
+这里暂时只考虑自然数，即非负整数。首先定义两个魔法函数：“+1”函数和“-1”函数。
 
 ```Scheme
 ;加一函数
@@ -311,11 +310,9 @@ Racket好像没有`list-set`，写一个：
 
 之所以叫魔法函数，是因为从这两个函数出发，可以得到**无穷**。但是减一函数有点特殊，它如果一直重复下去的话，一下子就……会违反我们的基本法——0是不能“-1”的。
 
-所以为了避免我们违反基本法，我们也要有自己的判断：引入`zero?`函数来判断一个数是不是0。`zero?`是特殊形式，是R5RS钦定的。
+所以为了避免我们违反基本法，我们也要有自己的判断：引入`zero?`函数来判断一个数是不是0。`zero?`是R5RS钦定的特殊形式。
 
-但是，我们现在只想做一点微小的工作，例如+3，怎么办？
-
-定义`(add a b)`如下：
+现在实现加法运算`(add a b)`如下：
 
 ```Scheme
 (define add
@@ -335,8 +332,6 @@ Racket好像没有`list-set`，写一个：
         (add1 (add a (sub1 b))))))
 ```
  二者是不同的。`add`将自己的参数作为迭代器，回溯的时候没有额外动作。而`add-r`到达递归终止条件时，会执行掉栈中剩余的`add1`函数，加法是在回溯的过程中发生的。这个问题，SICP讲得很清楚，因为读过这一段了，所以在这里多说一句。
-
-在The Little Schemer中，`add`函数写作一个空心加号，以示与原生加号的区别。
 
 `add1`之于数字，正如`cons`之于列表——皮亚诺的+1魔法。
 
@@ -578,20 +573,19 @@ Racket好像没有`list-set`，写一个：
 
 下面实现谓词函数`eqlist?`，该函数判断两个list是不是“完全”相同。所谓的完全相同，指的是结构和内容都完全相同。
 
-本文前言中有说过，list实际上就是个pair，其car是左元素，cdr是右元素。左右元素都可以分别是三种S-表达式：null、atom、以及list。所以排列组合一下，一个list的结构无非有7种：
+本文前言中有说过，list实际上是特殊的pair，其car是左元素，cdr是右元素。list的结构有5种形式：
 
- 1. (null , null)
- 2. (atom , null)
- 3. (atom , atom)
- 4. (atom , list)
- 5. (list , null)
- 6. (list , atom)
- 7. (list , list)
+ 1. (null , null) 空表'()
+ 2. (atom , null) 单原子表'(a)
+ 3. (atom , list) 形如'(1 2 3)
+ 4. (list , null) 形如'((1 2))
+ 5. (list , list) 形如'((1 2) 3)
 
+这里需要注意的是，list的cdr不是atom，如果是的话，那就是pair了。
 
-所以，只需要递归地判断`list1`和`list2`的左支和右支是否分别对应相同，就可以判断出两个list是否相同。
+为了判断两个list是否相同，只需要递归地判断`list1`和`list2`的左支和右支是否分别对应相同即可。
 
-深入思考一下。首先考虑递归出口：若两表均为null，则返回#t；若有且只有一个表是null，那肯定是#f。然后考虑左支：若两表左支均为相同atom，则递归判断右支，此种情况下，结果取决于右支是否相同；如果有且只有一个表的左支是atom，则一定是#f。其余情况下，将递归判断左支和右支，只有左右支均对应相同，两表才相同。
+首先考虑递归出口：若两表均为null，则返回#t；若有且只有一个表是null，那肯定是#f。然后考虑左支：若两表左支均为相同atom，则递归判断右支，此种情况下，结果取决于右支是否相同；如果有且只有一个表的左支是atom，则一定是#f。其余情况下，将递归判断左支和右支，只有左右支均对应相同，两表才相同。
 
 ```Scheme
 (define eqlist?
@@ -604,3 +598,30 @@ Racket好像没有`list-set`，写一个：
           (else (and (eqlist? (car list1) (car list2))
                      (eqlist? (cdr list1) (cdr list2)))))))
 ```
+
+基于`eqlist?`和以往实现的`eqan?`，可以写出判断两个S-表达式是否相同的`equal?`函数：
+
+```Scheme
+(define equal?
+  (lambda (exp1 exp2)
+    (cond ((and (atom? exp1) (atom? exp2)) (eqan? exp1 exp2))
+          ((or  (atom? exp1) (atom? exp2)) #f)
+          (else (eqlist? exp1 exp2)))))
+```
+
+# 第六章
+
+这章对我来说非常有趣。本章以Scheme的方式解决了（中缀）表达式的求值问题，并且通过过程抽象，使得同一求值程序可以解决不同类型的表达式。甚至在章末探讨了对数字进行抽象的可能性。
+
+首先描述了伪·中缀表达式的结构，并且构造`numbered?`函数用来判断一个表达式是不是“良构”的。之所以是伪·中缀式，是因为在书中的描述性定义中，并不允许平行的运算符（例如'(1 + 2 + 3)），换句话说就是没有所谓的优先级和结合性。
+
+```Scheme
+(define numbered?
+  (lambda (aexp)
+    (cond ((atom? aexp) (number? aexp))
+          ((atom? (car (cdr aexp))) (and (numbered? (car aexp)) (numbered? (car (cdr (cdr aexp))))))
+          (else #f))))
+```
+
+书P.101给出的简化版本过分简化了，针对形如`'(1 (1 + 2) 3)`这样的式子会给出假正结果。但是我写的这个也不是很好，遇到形如`'(1)`这样的式子，直接cdr是不可以的。暂时不管了。
+
