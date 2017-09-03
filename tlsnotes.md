@@ -28,7 +28,7 @@
 
 自然数具有的这种奇妙的自相似性质，是第三次数学危机的根源。幸而哥德尔慧眼如炬，站在更高的角度上，告诉人们形式化的能力极限在哪里，也告诉逻辑天空之下的众多程序员，哪些事情是你们所无法做到的。在TLS中，特地讲述了这个著名的做不到的事情。
 
-无论如何，先从这本Schemer开始吧。
+无论如何，先从这本The Little Schemer开始吧。这里阅读的版本是卢俊祥译《递归与函数式的奥妙》，电子工业出版社2017年7月第一版。阅读时使用DrRacket验证代码（[网站：racket-lang.org](http://racket-lang.org/)）。
 
 # 前言
 
@@ -78,7 +78,7 @@ list的默认解析方式是：以car为函数名，以cdr为参数列表对函�
 ```
 特殊形式`cond`是惰性的，也就是说，如果某个子句的谓词为真，则不再检查下面的子句。
 
-定义过程`member?`，用来判断某个S-表达式是否为某个列表的成员。这个函数很重要，尤其是对于实现集合的第七章。
+定义过程`member?`，用来判断某个原子是否为某个lat的成员。这个函数很重要，尤其是对于实现集合的第七章。
 ```Scheme
 (define member?
   (lambda (x lat)
@@ -623,3 +623,77 @@ Racket好像没有`list-set`，写一个：
 
 书P.101给出的简化版本过分简化了，针对形如`'(1 (1 + 2) 3)`这样的式子会给出假正结果。但是我写的这个也不是很好，遇到形如`'(1)`这样的式子，直接cdr是不可以的。暂时不管了。
 
+现在可以编写对伪·中缀表达式进行求值的`value`函数了。
+```Scheme
+(define value
+  (lambda (aexp)
+    (cond ((atom? aexp) aexp)
+          ((eq? (car (cdr aexp)) '+)
+           (+ (value (car aexp)) (value (car (cdr (cdr aexp))))))
+          ((eq? (car (cdr aexp)) '-)
+           (- (value (car aexp)) (value (car (cdr (cdr aexp))))))
+          ((eq? (car (cdr aexp)) '*)
+           (* (value (car aexp)) (value (car (cdr (cdr aexp))))))
+          ((eq? (car (cdr aexp)) '/)
+           (/ (value (car aexp)) (value (car (cdr (cdr aexp))))))
+          (else (display "Unexpected operator")))))
+
+(value '((1 / 3) - (1 / 4)))
+```
+DrRacket是一款非常棒的IDE。上面计算$\dfrac{1}{3}-\dfrac{1}{4}$甚至可以直接在输出窗口中给出$\dfrac{1}{12}$的答案，并且是像LaTex渲染出来的这种自然显示的形式。
+
+读到这里，我是非常感动的。当年用C语言写中缀式解析器的时候，耗费了那么多的精力，如今使用LISP只需要短短的几行就可以搞定。当然，这是两种语言的内在属性决定的。过程式的C系语言适合处理线性结构，比如数组这种；而函数式的L系语言由于代码数据合一，所以更适合递归地处理树状结构。数学表达式正是典型的树状结构，让L系语言来处理自然是再适合不过了。
+
+下面介绍了如何使`value`函数处理前缀式、后缀式、甚至其他的什么式的方法。或者应该叫“方法论”了，因为这正是SICP在第一章中就强调的“过程抽象”。在工程上广泛使用的OO方法，实际上就是这种关于“抽象”的方法论。
+
+根据前面的描述性定义，不管是何种顺序的表达式，每一个运算符都只有一个操作符和两个操作数，只是他们的位置不同。因此，可将`value`函数中“取操作符”和“取操作数”的步骤抽象为`operator`、`sub-exp-1`和`sub-exp-2`，以后缀式为例：
+```Scheme
+(define operator
+  (lambda (aexp)
+    (car (cdr (cdr aexp)))))
+
+(define sub-exp-1
+  (lambda (aexp)
+    (car aexp)))
+
+(define sub-exp-2
+  (lambda (aexp)
+    (car (cdr aexp))))
+```
+然后就可以写出“通用”的`value`函数：
+```Scheme
+(define value
+  (lambda (aexp)
+    (cond ((atom? aexp) aexp)
+          ((eq? (operator aexp) '+)
+           (+ (value (sub-exp-1 aexp)) (value (sub-exp-2 aexp))))
+          ((eq? (operator aexp) '-)
+           (- (value (sub-exp-1 aexp)) (value (sub-exp-2 aexp))))
+          ((eq? (operator aexp) '*)
+           (* (value (sub-exp-1 aexp)) (value (sub-exp-2 aexp))))
+          ((eq? (operator aexp) '/)
+           (/ (value (sub-exp-1 aexp)) (value (sub-exp-2 aexp))))
+          (else (display "Unexpected operator")))))
+
+(value '((1 3 /) (1 4 /) -))
+```
+当然，`value`函数的各部分甚至可以进一步抽象，例如运算符及其行为定义等，不再深入思考了。领会这种方法论就好。
+
+本章的最后，介绍了一种使用Scheme列表对数字进行编码的方法，并且基于此重新定义了常用的运算。其实，丘奇也曾经在lambda演算的框架内做过同样的工作，即著名的[丘奇编码](https://en.wikipedia.org/wiki/Church_encoding)。在我去年读的《[计算的本质](https://book.douban.com/subject/26148763/)》这本书中，更是使用丘奇编码实际构建了一段有意义的程序（过段时间，我将把之前的阅读笔记整理一下，作为本文的补充）。这其中平地起高楼的美妙，还是非常引人入胜的。说到这里，我想起曾经在知乎上看到的一个[有趣的回答](https://www.zhihu.com/question/39422784/answer/129979885)。形式化的魅力就在于，能够从非常简单的事情出发，推演到万事万物。这种“构造”之美，令人陶醉。
+
+外国人很喜欢抖一些莫名其妙的包袱，这本书里就充满了匪夷所思的包袱。P.109所说的“小心阴影”，我的理解是，在构建抽象的过程中，要时刻注意体系的“一致性”。例如书中给的例子：使用list来表示数字的时候，`lat?`函数立刻就不可用了。在《计算的本质》中，更是采取某些措施将proc表达的丘奇编码同原生的Ruby代码联系起来，以维护丘奇编码同Ruby的“一致性”。技术上来说，就涉及到很多设计模式方面的问题。设计模式我不懂，大概就是这个意思。
+
+# 第七章
+
+本章实现集合——整个现代数学的基石。
+
+集合在本章称为set。之所以不直接称为“集合”，是因为collection这个词也具有类似的意义。一般来说，collection比set具有更广泛的意义，例如Java的collection容器就包含set。set多指真正意义上的元素不可重复的“集合”，因此下文统一使用“集合”一词指代元素不可重复的集合。
+
+为了突出本质问题，避免讨论细枝末节，本章只使用lat表示集合，不考虑list的嵌套。首先实现谓词`set?`，用来判断一个列表是不是集合：
+```Scheme
+(define set?
+  (lambda (set)
+    (cond ((null? set) #t) ;空集是集合
+          ((member? (car set) (cdr set)) #f) ;定义在第二章
+          (else (set? (cdr set))))))
+```
