@@ -28,7 +28,7 @@
 
 自然数具有的这种奇妙的自相似性质，是第三次数学危机的根源。幸而哥德尔慧眼如炬，站在更高的角度上，告诉人们形式化的能力极限在哪里，也告诉逻辑天空之下的众多程序员，哪些事情是你们所无法做到的。在TLS中，特地讲述了这个著名的做不到的事情。
 
-无论如何，先从这本The Little Schemer开始吧。这里阅读的版本是卢俊祥译《递归与函数式的奥妙》，电子工业出版社2017年7月第一版。阅读时使用DrRacket验证代码（[网站：racket-lang.org](http://racket-lang.org/)）。
+无论如何，先从这本The Little Schemer开始吧。这里阅读的版本是卢俊祥译《递归与函数式的奥妙》，电子工业出版社2017年7月第一版。阅读时使用DrRacket验证代码（网站：[racket-lang.org](http://racket-lang.org/)）。
 
 # 前言
 
@@ -87,13 +87,13 @@ list的默认解析方式是：以car为函数名，以cdr为参数列表对函�
           (else (member? x (cdr lat))))))
 ```
 
-> 任何函数必须首先检查传入参数是否为null/0。这是递归得以收敛的出口条件。
+> 一般而言，函数应首先检查传入参数。保证递归得以收敛。
 
 # 第三章
 
 本章主要讲述如何使用`cons`特殊函数和一般性递归实现对lat的操作。
 
-首先实现函数`rember`，它接受一个原子`a`和一个列表`list`，返回删除了第一个`x`的`lat`。
+首先实现函数`rember`，它接受原子`a`和`lat`，返回删除了第一个`a`的`lat`。
 
 ```Scheme
 (define rember
@@ -677,7 +677,7 @@ DrRacket是一款非常棒的IDE。上面计算$\dfrac{1}{3}-\dfrac{1}{4}$甚至
 
 (value '((1 3 /) (1 4 /) -))
 ```
-当然，`value`函数的各部分甚至可以进一步抽象，例如运算符及其行为定义等，不再深入思考了。领会这种方法论就好。
+当然，`value`函数的各部分甚至可以进一步抽象，例如运算符及其行为定义等。第八章将介绍这件事情。
 
 本章的最后，介绍了一种使用Scheme列表对数字进行编码的方法，并且基于此重新定义了常用的运算。其实，丘奇也曾经在lambda演算的框架内做过同样的工作，即著名的[丘奇编码](https://en.wikipedia.org/wiki/Church_encoding)。在我去年读的《[计算的本质](https://book.douban.com/subject/26148763/)》这本书中，更是使用丘奇编码实际构建了一段有意义的程序（过段时间，我将把之前的阅读笔记整理一下，作为本文的补充）。这其中平地起高楼的美妙，还是非常引人入胜的。说到这里，我想起曾经在知乎上看到的一个[有趣的回答](https://www.zhihu.com/question/39422784/answer/129979885)。形式化的魅力就在于，能够从非常简单的事情出发，推演到万事万物。这种“构造”之美，令人陶醉。
 
@@ -689,7 +689,7 @@ DrRacket是一款非常棒的IDE。上面计算$\dfrac{1}{3}-\dfrac{1}{4}$甚至
 
 集合在本章称为set。之所以不直接称为“集合”，是因为collection这个词也具有类似的意义。一般来说，collection比set具有更广泛的意义，例如Java的collection容器就包含set。set多指真正意义上的元素不可重复的“集合”，因此下文统一使用“集合”一词指代元素不可重复的集合。
 
-为了突出本质问题，避免讨论细枝末节，本章只使用lat表示集合，不考虑list的嵌套。首先实现谓词`set?`，用来判断一个列表是不是集合：
+为了突出本质问题，避免讨论细枝末节，一般使用lat表示集合，不考虑list的嵌套。首先实现谓词`set?`，用来判断一个列表是不是集合：
 ```Scheme
 (define set?
   (lambda (set)
@@ -697,3 +697,63 @@ DrRacket是一款非常棒的IDE。上面计算$\dfrac{1}{3}-\dfrac{1}{4}$甚至
           ((member? (car set) (cdr set)) #f) ;定义在第二章
           (else (set? (cdr set))))))
 ```
+随后定义`makeset`函数，用来将一个包含重复元素的lat转换为集合：
+```Scheme
+(define makeset
+  (lambda (lat)
+    (cond ((null? lat) '())
+          ((member? (car lat) (cdr lat)) (makeset (cdr lat)))
+          (else (cons (car lat) (makeset (cdr lat)))))))
+```
+当然，也可以用前面实现过的`multirember`函数来构造这个函数。
+
+下面实现集合的三种基本运算——交、并、补，以及一些判断集合之间关系的谓词。首先写判断集合之间包含关系的谓词`subset?`：
+```Scheme
+(define subset?
+  (lambda (set1 set2)
+    (cond ((null? set1) #t) ;空集是任何集合的子集
+          ((member? (car set1) set2) (subset? (cdr set1) set2))
+          (else #f))))
+```
+利用`subset?`即可写出判断两个集合是否相同的`eqset?`：
+```Scheme
+(define eqset?
+  (lambda (set1 set2)
+    (and (subset? set1 set2) (subset? set2 set1))))
+```
+判断两个集合是否有相交的元素：
+```Scheme
+(define intersect?
+  (lambda (set1 set2)
+    (cond ((null? set1) #f)
+          ((member? (car set1) set2) #t)
+          (else (intersect? (cdr set1) set2)))))
+```
+交集、并集、相对差集：
+```Scheme
+(define intersect
+  (lambda (set1 set2)
+    (cond ((null? set1) '())
+          ((member? (car set1) set2) (cons (car set1) (intersect (cdr set1) set2)))
+          (else (intersect (cdr set1) set2)))))
+
+(define union
+  (lambda (set1 set2)
+    (cond ((null? set1) set2)
+          ((not (member? (car set1) set2)) (cons (car set1) (union (cdr set1) set2)))
+          (else (union (cdr set1) set2)))))
+
+(define rel-complement
+  (lambda (set1 set2)
+    (cond ((null? set1) '())
+          ((member? (car set1) set2) (rel-complement (cdr set1) set2))
+          (else (cons (car set1) (rel-complement (cdr set1) set2))))))
+```
+下面这个函数有一种“reduce”的感觉。实现函数`intersectall`，该函数接收由集合组成的列表作为参数，返回各集合的交集：
+```Scheme
+(define intersectall
+  (lambda (lset)
+    (cond ((null? (cdr lset)) (car lset)) ;列表只剩一个集合
+          (else (intersect (car lset) (intersectall (cdr lset)))))))
+```
+> 未完待续，今天先写到这里。在这之后，定义了“pair”和“rel”，实际上就是有序对和二元关系，并在此基础上定义了**函数**。引入函数概念之后，最为精彩的第八、九、十章就要开始了。“智商不够用了吧~”
