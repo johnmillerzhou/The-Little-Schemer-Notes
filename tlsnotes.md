@@ -1,4 +1,12 @@
 > 链接目录</br>
+> https://jasonwood1986.wordpress.com/2007/03/04/continuation-pass-style/</br>
+> http://daweibalong.iteye.com/blog/1882795</br>
+> http://docs.huihoo.com/homepage/shredderyin/wiki/ContinuationPassingStyle.html</br>
+> http://docs.huihoo.com/homepage/shredderyin/wiki/ContinuationNotes.html</br>
+> http://www.nowamagic.net/librarys/veda/detail/2332</br>
+> https://segmentfault.com/a/1190000008489245</br>
+> http://community.schemewiki.org/?call-with-current-continuation</br>
+> http://jiyinyiyong.github.io/monads-in-pictures/</br>
 > https://www.oschina.net/translate/learn-clojure-in-minutes</br>
 > https://www.ibm.com/developerworks/cn/opensource/os-eclipse-clojure/</br>
 > http://okmij.org/ftp/Computation/lambda-calc.html</br>
@@ -7,6 +15,10 @@
 > 有可能读完The Little Schemer之后就懒得读SICP了呢
 
 # 笔记前言
+
+## 声明
+
+**本文为作者业余时间的读书笔记，内容仅供参考，请读者以批判的态度看待这篇文章。作者本人虽然是计算机专业出身，但对于FP、以及比较深入的逻辑学和程序语言理论（例如递归论、范畴论这些）并不了解，因此这篇文章难免漏洞百出。请读者批判吸收，切勿偏听偏信，同时欢迎一切批评指正。**
 
 ## 无限风光在险峰
 
@@ -757,3 +769,263 @@ DrRacket是一款非常棒的IDE。上面计算$\dfrac{1}{3}-\dfrac{1}{4}$甚至
           (else (intersect (car lset) (intersectall (cdr lset)))))))
 ```
 > 未完待续，今天先写到这里。在这之后，定义了“pair”和“rel”，实际上就是有序对和二元关系，并在此基础上定义了**函数**。引入函数概念之后，最为精彩的第八、九、十章就要开始了。“智商不够用了吧~”
+
+# 第八章
+
+尾递归就是Continuation Passing Style。因为尾递归可以避免回溯，但代价是每次递归调用，都会将运行时信息通过参数进行传递，造成代码可读性降低。为了加深理解，现在从最简单的阶乘出发，看一看一般递归、尾递归和CPS的代码的运行轨迹。
+```
+(define fac-r
+  (lambda (n)
+    (cond ((zero? n) 1)
+          (else (* n (fac-r (- n 1)))))))
+
+(define fac-tr
+  (lambda (n product)
+    (cond ((zero? n) product)
+          (else (fac-tr (- n 1) (* n product))))))
+
+(define fac-cps
+  (lambda (n cont)
+    (cond ((zero? n) (cont 1))
+          (else (fac-cps (- n 1)
+                         (lambda (res)
+                           (cont (* n res))))))))
+
+(current-milliseconds)
+(fac-r (fac-r 7))
+(current-milliseconds)
+(fac-tr (fac-tr 7 1) 1)
+(current-milliseconds)
+(fac-cps (fac-cps 7 (lambda (x) x)) (lambda (x) x))
+(current-milliseconds)
+```
+测试执行时间，可以看到`fac-tr`是最快的，`fac-cps`次之，`fac-r`最慢。其实这三个函数的时空复杂度并没有本质区别，但是解释器会对`fac-tr`的尾递归进行优化，节省宝贵的栈空间。而`fac-cps`实际上是通过cont参数将Continuation从栈空间转移到了堆空间，总体来看并没有节省空间。
+
+按照一般的思路，计算阶乘的递归思路是（记为*r*）
+```Scheme
+(* 3 (* 2 (* 1 <init=1>)))
+```
+其中的每一对括号，都是一次函数调用；并且每次调用，都需要内层函数调用的运算结果作为参数。因此，每执行一次函数调用，都需要先将自身入栈，然后调用参数中的函数以获取参数，获取参数后才能获得自身的值。这个过程是通过“调用-返回”机制来传递运算结果的：先是层层深入计算参数，然后通过回溯，层层传递返回值，最终获取结果。递归调用的过程是为了寻找计算初始值（也就是递归的出口条件，语法树的叶子节点），并没有执行真正的计算（即累乘），真正的计算是从叶子节点开始，通过参数返回的方式，逐级向树根传递，直到获得结果。
+
+既然每次获取参数都要继续深入调用参数上的函数，那么不妨先不对它进行求值，而是把它抽象出来，作为一个“打包”了的过程**参数**进行迭代。按照这个思路对*r*进行转化，可以得到这样的一种计算过程（记为*c*）：
+```Scheme
+((((cont (* 3 res)) (* 2 res))) (* 1 res)) <init=1>
+```
+转化过程是这样的：对于r的最内层函数调用`(* 1 <init=1>)`，`<init=1>`是这次调用的内层嵌套调用所获得的结果。由于是最内层，因此这个值就是递归函数的出口值，或者说是回溯过程的初始值。因此将其抽象为参数`res`，*r*改写成某种函数调用的形式*r1*：
+```Scheme
+[(* 3 (* 2 (* 1 res)))] <init=1>
+```
+左侧方括号括起来的是一个函数，这个函数包含了第一步计算以后的所有计算过程，因此它的名字叫“Continuation”，记为`cont`，不要忘记它的参数是`res`，代表已经获得的计算结果。对于第一步计算，`res`就是回溯初始值。抽象后的*r1*就可以写成是：
+```Scheme
+cont <init=1>
+```
+为了避免混乱，最外层的application不写括号了。若执行*r1*的application，那么最内层的调用结果已经得到，仿照上面的步骤对最内层调用结果进行抽象，记为`res2`，则得到*r2*形式：
+```Scheme
+[[(* 3 (* 2 res2))] (* 1 res)] <init=1>
+```
+最左方括号括起来的仍然是一个函数，这个函数包含了基于第一步计算得到的第二步计算以后的所有计算过程，因此它的名字也叫“Continuation”，同样记为`cont`。但需要注意的是，此cont非彼cont，现在的cont是过去的cont的“一部分”。至此就可以看出，在阶乘的计算过程中，作为Continuation的`cont`是不断变化的，这就提示我们，cont可以作为阶乘函数的**参数**进行迭代，以实现尾递归形式。继续对*r2*进行同样的抽象，得到*r3*：
+```Scheme
+[[[* 3 res3] (* 2 res2)] (* 1 res)] <init=1>
+```
+到这一步就会发现，最左application`[* 3 res3]`所需的参数`res3`已经全部得到，因此只要计算出最左application的值，就得到了最终结果。为了不失一般性，继续对最左application进行抽象，即得到*r4*：
+```Scheme
+[[[cont res4](* 3 res3) (* 2 res2)] (* 1 res)] <init=1>
+```
+关于*c4*有三点说明：
+
+ - ①这里的`cont`是作为迭代参数的起点，一般而言，初始`cont`是恒等函数`(lambda (x) x)`。
+
+ - ②根据变换`(lambda (x) (f x)) = f`，*r4*可以化简为：
+```Scheme
+[[[cont (* 3 res3)] (* 2 res2)] (* 1 res)] <init=1>
+```
+ - ③每个参数`resX`在其作用域内是约束的，所以不妨全都改成`res`，这样并不会导致混乱，并且有利于后续步骤的理解。
+
+至此，已经将计算过程*r*转换为计算过程*c*。转换的过程以及计算过程*c*本身的形式说明：**计算过程本身也可以作为数据进行迭代，并且迭代的过程并不涉及“调用-返回”。**现在，基于这种想法，按照`fac-tr`的套路，将`cont`作为迭代参数，尝试重写阶乘函数。按照TLS的讲述风格，首先可以勾勒出新函数的大致框架如下：
+```Scheme
+(define fac-cps
+  (lambda (n cont)
+    (cond ((zero? n) ...)
+          (else (fac-cps ...)))))
+```
+回顾将*r*转换为*c*的过程，使用旧的Continuation`cont`迭代产生新Continuation（`NewContinuation`）的过程的要点是这样的：
+
+ - Continuation是function，它接收先前运算的结果，计算出最终结果；
+ - `NewContinuation`根据上一步Continuation`cont`以及小步计算逻辑进行构造；
+ - `NewContinuation`的函数体是对旧Continuation`cont`的application；
+ - application的参数是一小步计算（例如`(* 1 res)`）；
+ - 小步计算可能需要外部的自由变量（例如阶乘计数参数n）；
+ - 这一小步计算需要利用先前计算得到的结果`res`；
+ - 先前计算的结果`res`正是Continuation所需要的参数；
+ - 这一小步计算的结果将传入上一步Continuation`cont`；
+ - application返回的结果就是基于`cond`和小步计算逻辑的下一步Continuation的结果，也就是说，**该迭代过程根据既有`cont`和固定的小步计算逻辑，构造了一个能够接受`res`参数的新的Continuation（`NewContinuation`）**。
+
+将这些要点落实到Scheme代码就是：
+```Scheme
+(define NewContinuation
+  (lambda (res)
+    (<cont> (* <n> res))))
+```
+带尖括号的参数是自由变量，是在`NewContinuation`外部进行变化的。
+
+利用`NewContinuation`过程，就可以构造阶乘函数的本体了。首先考虑出口条件分支：观察上面的*r1*，此时的`cont`经过多次迭代，已经包含了所有的后续计算步骤，只需要一个初始值用于启动整个Continuation以获得最终结果，这个初始值显然是1。对于一般情况，按照尾递归的套路，`fac-tr`的两个参数都是迭代器，`n`用来计数，`cont`就是Continuation的迭代器。到这里，完整的`fac-tr`就可以写出来了：
+```Scheme
+(define fac-cps
+  (lambda (n cont)
+    (cond ((zero? n) (cont 1))
+          (else (fac-cps (- n 1)
+                         (lambda (res)
+                           (cont (* n res))))))))
+```
+与上面的`fac-tr`相类比，就会发现，参数的迭代都遵循一个减少一个累加的规律，不同的是，`fac-tr`通过尾递归返回值的累乘获得结果，而`fac-cps`是通过Continuation的“累积”，获得完整的计算步骤，最终一次性得到计算结果。这种将Continuation作为参数的编程风格，就是CPS。
+
+CPS的好处是通过前述变换可以将一般递归化为（比较容易实现的）尾递归，但并不会减少算法的时空复杂度。CPS只不过是将调用栈上的过程积累转嫁到参数的堆上面了。并且CPS的思路*c*比正常的递归思路*r*要抽象得多，CPS的代码往往难以阅读。但由于形如`fac-tr`的迭代式尾递归有时候难以实现，尤其是Scheme的`call/cc`可以自动执行CPS变换过程，由此带来的便利性以及CPS本身的尾递归性质，给了可读性差的CPS以用武之地。
+
+CPS可以传递不止一条控制流。维基百科中给出一个乘法的例子，利用两个Continuation参数实现了错误处理。CPS与异常处理、异步编程等技术的关系非常密切，callback函数实际上就是一种Continuation。
+
+**“尾调用”和“尾递归”貌似并不一样。这个问题有时间再深究。**
+
+```Scheme
+(define multirember&co
+  (lambda (a lat col)
+    (cond ((null? lat)
+            (col '() '()))
+          ((eq? (car lat) a)
+            (multirember&co a
+                            (cdr lat)
+                            (lambda (newlat seen)
+                              (col newlat
+                                   (cons (car lat) seen)))))
+          (else
+            (multirember&co a
+                            (cdr lat)
+                            (lambda (newlat seen)
+                              (col (cons (car lat) newlat)
+                                   seen)))))))
+
+(define a-friend
+  (lambda (x y)
+    (cons x (cons y '()))))
+
+(define new-friend
+  (lambda (newlat seen)
+    (col newlat
+         (cons (car lat) seen))))
+
+(multirember&co 'a '(a b c d a b) a-friend)
+
+(define collector
+  (lambda (L R L&R Ln Rn)
+    (cons L (cons R (cons L&R (cons Ln (cons Rn '())))))))
+
+(define multiinsertLR
+  (lambda (new oldL oldR lat col)
+    (cond ((null? lat) (col '() '() '() 0 0))
+          ((eq? (car lat) oldL)
+             (multiinsertLR new
+                            oldL
+                            oldR
+                            (cdr lat)
+                            (lambda (L R L&R Ln Rn)
+                              (col (cons new (cons oldL L))
+                                   (cons oldL R)
+                                   (cons new (cons oldL L&R))
+                                   (+ Ln 1)
+                                   Rn))))
+          ((eq? (car lat) oldR)
+             (multiinsertLR new
+                            oldL
+                            oldR
+                            (cdr lat)
+                            (lambda (L R L&R Ln Rn)
+                              (col (cons oldR L)
+                                   (cons oldR (cons new R))
+                                   (cons oldR (cons new L&R))
+                                   Ln
+                                   (+ Rn 1)))))
+          (else
+             (multiinsertLR new
+                            oldL
+                            oldR
+                            (cdr lat)
+                            (lambda (L R L&R Ln Rn)
+                              (col (cons (car lat) L)
+                                   (cons (car lat) R)
+                                   (cons (car lat) L&R)
+                                   Ln
+                                   Rn)))))))
+
+
+(multiinsertLR '0 'l 'r '(l r l r l) collector)
+
+(define reduce
+  (lambda (list func)
+    (cond ((null? list) (func 0 0))
+          (else (func (car list)
+                      (reduce (cdr list) func))))))
+
+(reduce '(1 2 3) +)
+
+(define evens-only*&co
+  (lambda (list col)
+    (cond ((null? list) (col 1 0 '()))
+          ((atom? (car list))
+            (cond ((even? (car list))
+                   (evens-only*&co (cdr list)
+                                   (lambda (PE SO EList)
+                                     (col (* (car list) PE)
+                                          SO
+                                          (cons (car list) EList)))))
+                  (else
+                    (evens-only*&co (cdr list)
+                                    (lambda (PE SO Elist)
+                                      (col PE
+                                           (+ (car list) SO)
+                                           EList))))))
+          (else (evens-only*&co (car list)
+                                (lambda (PE SO EList)
+                                   (evens-only*&co (cdr list)
+                                                   (lambda (dPE dSO dEList)
+                                                     (col (* PE dPE)
+                                                          (+ SO dSO)
+                                                          (cons EList dEList))))))))))
+(define coll
+  (lambda (L R L&R)
+    (cons L (cons R (cons L&R '())))))
+
+(evens-only*&co '((1 2 3) (4 5 6)) coll)
+
+;一个简单的例子
+(define sum
+  (lambda (n col)
+    (cond ((zero? n) (col 0))
+          (else (sum (- n 1)
+                     (lambda (s)
+                       (col (+ n s))))))))
+
+(sum 100 (lambda (x) x))
+
+(define fib
+  (lambda (n cont)
+    (cond ((= n 0) (cont 1))
+          ((= n 1) (cont 1))
+          (else (fib (- n 1)
+                     (lambda (res1)
+                       (fib (- n 2)
+                            (lambda (res2)
+                              (cont (+ res1 res2))))))))))
+
+(fib 6 (lambda (x) x))
+```
+
+（待续）
+
+# 第九章
+
+这一章讲了停机问题和Y组合子。（待续）
+
+# 第十章
+
+这一章实现了有限的Scheme解释器。（待续）
+
+> 怕什么真理无穷，进一步自有进一步的欢喜。
